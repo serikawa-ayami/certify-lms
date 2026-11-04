@@ -78,6 +78,29 @@ class ChatUnreadCountServiceTest extends TestCase
         $this->assertSame(1, $count);
     }
 
+    public function test_room_count_for_user_excludes_room_with_only_own_messages(): void
+    {
+        $student = User::factory()->student()->inProgress()->create();
+        $enrollment = Enrollment::factory()->for($student)->create();
+        $room = ChatRoom::factory()->for($enrollment)->create();
+
+        ChatMember::factory()->create([
+            'chat_room_id' => $room->id,
+            'user_id' => $student->id,
+            'last_read_at' => null,
+        ]);
+
+        // 自分が送ったメッセージだけがあるルーム(相手からの新着はなし)
+        ChatMessage::factory()->create([
+            'chat_room_id' => $room->id,
+            'sender_user_id' => $student->id,
+        ]);
+
+        $count = app(ChatUnreadCountService::class)->roomCountForUser($student);
+
+        $this->assertSame(0, $count);
+    }
+
     public function test_message_counts_by_room_returns_keyed_array_with_own_and_pre_read_excluded(): void
     {
         $student = User::factory()->student()->inProgress()->create();
