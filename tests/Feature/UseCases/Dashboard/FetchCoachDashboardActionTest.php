@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\ChatUnreadCountService;
 use App\UseCases\Dashboard\FetchCoachDashboardAction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Mockery;
 use Tests\TestCase;
@@ -56,6 +57,36 @@ class FetchCoachDashboardActionTest extends TestCase
 
         $first = $vm->assignedEnrollments->first();
         $this->assertNotNull($first->last_activity_at);
+    }
+
+    public function test_last_activity_at_is_latest_learning_session_started_at(): void
+    {
+        $coach = User::factory()->coach()->inProgress()->create();
+        $cert = Certification::factory()->published()->create();
+        $this->attachCoach($cert, $coach);
+        $enrollment = Enrollment::factory()->for($cert)->learning()->create();
+
+        // 古い学習記録と新しい学習記録を1件ずつ作る
+        LearningSession::factory()
+            ->forEnrollment($enrollment)
+            ->forUser($enrollment->user)
+            ->closed()
+            ->startedOn(now()->subDays(3))
+            ->create();
+        $latest = LearningSession::factory()
+            ->forEnrollment($enrollment)
+            ->forUser($enrollment->user)
+            ->closed()
+            ->startedOn(now()->subDay())
+            ->create();
+
+        $vm = app(FetchCoachDashboardAction::class)($coach);
+
+        // 最終活動日時は、新しいほうの学習記録の開始日時になる
+        $this->assertSame(
+            $latest->started_at->toDateTimeString(),
+            Carbon::parse($vm->assignedEnrollments->first()->last_activity_at)->toDateTimeString(),
+        );
     }
 
     public function test_only_passed_and_learning_enrollments_are_displayed(): void
